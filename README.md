@@ -1,12 +1,11 @@
-# PSmatching
 
-# Rebound Effect of Driving a Green Vehicle
+# Does Owning an Energy Efficient Vehicle Lead to Longer Driving Distance
 
-This project aims to ask the question "Does owning an _energy efficient vehicle_ lead to longer driving distance". Using data from [National Household Travel Survey(2017)](https://nhts.ornl.gov/), I explore how is households' driving pattern correlated with owning an _energy efficient vehicle_, which includes hybrid electric vehicles(HEV), plug-in hybrid electric vehicles(PHEV), electric vehicles(EV), and other alternative fuel vehicles. 
+This project aims to explore the question "Does owning an _energy efficient vehicle_ lead to longer driving distance". Using data from [National Household Travel Survey(2017)](https://nhts.ornl.gov/), I explore how households' driving pattern is correlated with owning an _energy efficient vehicle_, which includes hybrid electric vehicles(HEV), plug-in hybrid electric vehicles(PHEV), electric vehicles(EV), and other alternative fuel vehicles. 
 
-The question could be of interest to policy makers who provide financial incentives for purchasing _energy efficient vehicles_. Policy makers promote _energy efficient vehicles_ with a hope to reduce the environmental impact of driving. However, if there exists the notorious _rebound effect_, which means "owning a green vehicle leads to more driving", the environmental benefit of driving a green vehicle would be discounted. Therefore it would be benificial to the policy maker to detect and quantify such _rebound effect_.
+The question could be of interest to policy makers who provide financial incentives for purchasing _energy efficient vehicles_. Policy makers promote _energy efficient vehicles_ with a hope to reduce the environmental impact of driving. However, if there exists the notorious _rebound effect_, which means "owning a green vehicle leads to more driving", the environmental benefit of driving a green vehicle would be discounted. Therefore it would be benificial to the policy maker to detect and quantify such a _rebound effect_.
 
-A main difficulty of quantifying rebound effect is "selection bias": households who anticipate to drive longer mileage have greater incentive to purchase energy efficient vehicles due to fuel cost saving. Not addressing this issue will result in over-estimate in the rebound effect. To alleviate such concern, I use propensity score matching method to first pair up households with similar characteristics and are equally likely to purchase energy efficient vehicles, then compair the difference of their driving distance. Since the paired households are believed to be equally likely to purchase energy efficient vehicles, the purchase decision becomes quasi-random, eliminating the selection bias.  
+A main difficulty of quantifying rebound effect is "selection bias": households who anticipate to drive longer mileage have greater incentive to purchase energy efficient vehicles due to fuel cost saving. Not addressing this issue will result in over-estimate in the rebound effect. To alleviate such concern, I use propensity score matching method to first pair up households with similar characteristics and are equally likely to purchase energy efficient vehicles, then compare the difference of their driving distances. Since the paired households are believed to be equally likely to purchase energy efficient vehicles, the purchase decision becomes quasi-random. Therefore, we overcome the selection bias problem.  
 
 The dataset contains information regarding to: 
 * households' size, income, state, urban/rural area, number of adults, number of vehicles, etc.
@@ -21,19 +20,19 @@ The following code will first import and clean the dataset, and then use propens
 
 import pandas as pd
 import numpy as np
-from numpy import *
 import os
 import matplotlib.pyplot as plt
 from matplotlib import rcParams
 rcParams.update({'figure.autolayout': True})
+import warnings
+warnings.filterwarnings('ignore')
 from pymatch.Matcher import Matcher
 import statsmodels.api as sm
 import seaborn as sns
-import warnings
-warnings.filterwarnings('ignore')
+
 ```
 
-# Import and clean dataset
+## Import and clean dataset
 
 
 ```python
@@ -221,8 +220,15 @@ vehtype_dic = {1: 'car',2: 'van',3: 'SUV',4: 'pickup',5: 'truck',6: 'RV',7: 'mot
 data['vehtype'] = data['VEHTYPE'].map(vehtype_dic)
 fueltype_dic = {1: 'gas', 2: 'diesel', 3: 'hybrid/electric/alternative'}
 data['fueltype'] = data['FUELTYPE'].map(fueltype_dic)
-data.groupby('fueltype')['fueltype'].count()
 
+```
+
+## Summary Statistics
+
+
+```python
+# Frequency of FuelType
+data.groupby('fueltype')['fueltype'].count()
 ```
 
 
@@ -238,6 +244,7 @@ data.groupby('fueltype')['fueltype'].count()
 
 
 ```python
+# Average Driving Distance Grouped by FuelType
 data.groupby('fueltype')['ANNMILES'].mean()
 ```
 
@@ -253,6 +260,8 @@ data.groupby('fueltype')['ANNMILES'].mean()
 
 
 Above shows the mean annual mileage of vehicles of different fuel types. As can be seen, the lower the fuel cost, the longer the mileage driven is.
+
+### More Summary Statistics
 
 
 ```python
@@ -310,11 +319,13 @@ data.groupby(['fueltype','hfuel'])['relative_mile'].mean()
 
 Energy efficient vehicles are driven for more mileage compared to its local average levels.
 This further comfirms the driving behavior pattern. Until this stage we have looked at the general data pattern without handling the "selection bias" issue. We will try to deal with this problem using propensity score matching.<br><br>
-# Propensity Score Matching
+## Propensity Score Matching
 The following section will match the treatment/control groups:
 * treatment group: hybrid/electric/alternative vehicles
 * control group: gasoline/diesel vehicles
 They will be matched by both household and vehicle characteristics. The python package [pymatch](https://github.com/benmiroglio/pymatch) will be used here.
+
+### Calculating Propensity Score
 
 
 ```python
@@ -322,7 +333,6 @@ trt_dic = {1: False, 2: False,3: True}
 data['treatment'] = data['FUELTYPE'].map(trt_dic)
 fields = ["income", "homeown", "urban", "vehtype", "VEHAGE", "HHSIZE", "HHSTATE", "HHVEHCNT", "treatment", "ANNMILES"] 
 data_match = data[fields]
-data_match.head()
 treatment = data_match[data_match.treatment == 1]
 control = data_match[data_match.treatment == 0]
 m = Matcher(treatment, control, yvar = "treatment", exclude = ["ANNMILES"])
@@ -362,7 +372,7 @@ m.plot_scores()
 ```
 
 
-![png](output_15_0.png)
+![png](output_18_0.png)
 
 
 The above step plot the p-score distribution of treatment group and control group. <br>
@@ -370,13 +380,15 @@ For each p-score, there is positive chance of belonging to either group. (**comm
 The treatment group has much higher scores than the control group. (**separability**) <br>
 Such evidence support the use of propensity score matching.
 
+### Setting Matching Threshold
+
 
 ```python
 m.tune_threshold(method='random')
 ```
 
 
-![png](output_17_0.png)
+![png](output_21_0.png)
 
 
 Tune threshold for matching:<br>
@@ -386,6 +398,12 @@ From the graph: a threshold at 0.0003 will retain 100% of the data.
 ```python
 m.match(method = "min", nmatches = 1, threshold = 0.0003)
 # matching the treatment data points with control data points
+```
+
+### Preview Matched Data
+
+
+```python
 m.matched_data.sort_values("match_id").head(6)
 ```
 
@@ -515,102 +533,7 @@ m.matched_data.sort_values("match_id").head(6)
 
 
 
-
-```python
-m.record_frequency()
-```
-
-
-
-
-<div>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>freq</th>
-      <th>n_records</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>8278</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>2</td>
-      <td>414</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>3</td>
-      <td>100</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>4</td>
-      <td>35</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>5</td>
-      <td>19</td>
-    </tr>
-    <tr>
-      <th>5</th>
-      <td>6</td>
-      <td>16</td>
-    </tr>
-    <tr>
-      <th>6</th>
-      <td>7</td>
-      <td>6</td>
-    </tr>
-    <tr>
-      <th>7</th>
-      <td>8</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>8</th>
-      <td>9</td>
-      <td>3</td>
-    </tr>
-    <tr>
-      <th>9</th>
-      <td>10</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>10</th>
-      <td>11</td>
-      <td>5</td>
-    </tr>
-    <tr>
-      <th>11</th>
-      <td>13</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>12</th>
-      <td>14</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>13</th>
-      <td>16</td>
-      <td>1</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-
-
-
-8278 of the matched majority group recors occur only once, 414 twice, etc.<br><br>
-Next we will assess the quality of the matching.
+### Validity of Matching
 
 
 ```python
@@ -764,19 +687,20 @@ Calculate the difference through linear regression:
 
 ```python
 covariates = ["treatment", "income", "homeown", "VEHAGE", "HHSIZE" ,"HHVEHCNT"] 
-linmodel = sm.OLS(m.matched_data["ANNMILES"], 
-                  pd.concat([m.matched_data[covariates], 
+y=m.matched_data["ANNMILES"]
+X=sm.add_constant(pd.concat([m.matched_data[covariates], 
                              pd.get_dummies(m.matched_data["HHSTATE"]),
                              pd.get_dummies(m.matched_data["urban"]),
-                             pd.get_dummies(m.matched_data["vehtype"])],axis=1)).fit()
+                             pd.get_dummies(m.matched_data["vehtype"])],axis=1))
+linmodel = sm.OLS(y,X).fit()
 print('results from propensity score matching')
-print('ATE:',linmodel.params.treatment)
-print('standard error:',linmodel.tvalues.treatment)
+print('Average Difference: %.2f' %linmodel.params.treatment)
+print('standard error: %.2f' %linmodel.tvalues.treatment)
 ```
 
     results from propensity score matching
-    ATE: 1203.44791754
-    standard error: 4.94245467924
+    Average Difference: 1203.45
+    standard error: 4.94
 
 
 The above shows that energy efficient vehicles can induce 1203 miles more of annual driving distance, and the result is statistically significant.
@@ -785,14 +709,11 @@ The above shows that energy efficient vehicles can induce 1203 miles more of ann
 ```python
 unmatched1 = data[data['treatment']==1]['ANNMILES'].mean()
 unmatched0 = data[data['treatment']==0]['ANNMILES'].mean()
-unmatched1 - unmatched0
+print('Difference without propensity score matching: %.2f' %(unmatched1 - unmatched0))
+
 ```
 
-
-
-
-    2638.105175904215
-
+    Difference without propensity score matching: 2638.11
 
 
 The above is the raw difference of driving distance between two groups (without matching). This is greater than the matched result, providing evidence for selection bias: those who buy energy efficient vehicles probably drive more on average. Yet, the result from PSM indicates despite of such selection bias, buying an energy efficient vehicle will change people's driving behavior and induce more driving. <br><br>
@@ -854,7 +775,7 @@ m.plot_scores()
 ```
 
 
-![png](output_35_0.png)
+![png](output_40_0.png)
 
 
 
@@ -863,7 +784,7 @@ m.tune_threshold(method='random')
 ```
 
 
-![png](output_36_0.png)
+![png](output_41_0.png)
 
 
 
@@ -1002,195 +923,6 @@ m.matched_data.sort_values("match_id").head(6)
       <td>0.540142</td>
       <td>2</td>
       <td>6376</td>
-    </tr>
-  </tbody>
-</table>
-</div>
-
-
-
-
-```python
-m.record_frequency()
-```
-
-
-
-
-<div>
-<table border="1" class="dataframe">
-  <thead>
-    <tr style="text-align: right;">
-      <th></th>
-      <th>freq</th>
-      <th>n_records</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>0</th>
-      <td>1</td>
-      <td>6169</td>
-    </tr>
-    <tr>
-      <th>1</th>
-      <td>2</td>
-      <td>323</td>
-    </tr>
-    <tr>
-      <th>2</th>
-      <td>3</td>
-      <td>105</td>
-    </tr>
-    <tr>
-      <th>3</th>
-      <td>4</td>
-      <td>54</td>
-    </tr>
-    <tr>
-      <th>4</th>
-      <td>5</td>
-      <td>39</td>
-    </tr>
-    <tr>
-      <th>5</th>
-      <td>6</td>
-      <td>15</td>
-    </tr>
-    <tr>
-      <th>6</th>
-      <td>7</td>
-      <td>22</td>
-    </tr>
-    <tr>
-      <th>7</th>
-      <td>8</td>
-      <td>20</td>
-    </tr>
-    <tr>
-      <th>8</th>
-      <td>9</td>
-      <td>15</td>
-    </tr>
-    <tr>
-      <th>9</th>
-      <td>10</td>
-      <td>12</td>
-    </tr>
-    <tr>
-      <th>10</th>
-      <td>11</td>
-      <td>7</td>
-    </tr>
-    <tr>
-      <th>11</th>
-      <td>12</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>12</th>
-      <td>13</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>13</th>
-      <td>14</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>14</th>
-      <td>15</td>
-      <td>3</td>
-    </tr>
-    <tr>
-      <th>15</th>
-      <td>16</td>
-      <td>4</td>
-    </tr>
-    <tr>
-      <th>16</th>
-      <td>17</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>17</th>
-      <td>18</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>18</th>
-      <td>19</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>19</th>
-      <td>21</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>20</th>
-      <td>23</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>21</th>
-      <td>24</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>22</th>
-      <td>27</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>23</th>
-      <td>28</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>24</th>
-      <td>30</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>25</th>
-      <td>33</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>26</th>
-      <td>34</td>
-      <td>2</td>
-    </tr>
-    <tr>
-      <th>27</th>
-      <td>36</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>28</th>
-      <td>38</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>29</th>
-      <td>41</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>30</th>
-      <td>54</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>31</th>
-      <td>65</td>
-      <td>1</td>
-    </tr>
-    <tr>
-      <th>32</th>
-      <td>82</td>
-      <td>1</td>
     </tr>
   </tbody>
 </table>
@@ -1387,8 +1119,3 @@ Findout from this section:
 * Individuals in households with clean energy vehicles are driving more miles, which is consistent with the above results. <br><br>
 
 Combining the results, we can assert that owning an energy efficient vehicle leads to more driving, and this does not substitute the mileage of other vehicles owned by the household. The **rebound effect does exist for energy efficient vehicles**. 
-
-
-```python
-
-```
